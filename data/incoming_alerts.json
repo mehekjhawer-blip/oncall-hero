@@ -1,0 +1,115 @@
+[
+  {
+    "alert_id": "ALERT-001",
+    "title": "Redis memory spike",
+    "category": "redis-memory",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 40,
+    "message": "PagerDuty [SEV-1] Redis memory usage at 94% and climbing on prod-cluster-3. Repeated OOM kills in the last 12 minutes; cache hit rate dropping.",
+    "logs": [
+      "02:01:44Z redis-cache-0 WARN used_memory=3.76GB maxmemory=4GB eviction_policy=noeviction",
+      "02:02:10Z redis-cache-0 ERROR OOM command not allowed when used memory > 'maxmemory'",
+      "02:02:11Z kubelet Killing container redis-cache reason=OOMKilled exitCode=137"
+    ]
+  },
+  {
+    "alert_id": "ALERT-002",
+    "title": "Redis memory spike (repeat)",
+    "category": "redis-memory",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 40,
+    "message": "PagerDuty [SEV-1] Redis memory climbing again on prod-cluster-3, second occurrence tonight. OOM kill risk within minutes.",
+    "logs": [
+      "02:19:08Z redis-cache-1 WARN used_memory=3.70GB maxmemory=4GB eviction_policy=noeviction",
+      "02:19:40Z redis-cache-1 ERROR OOM command not allowed when used memory > 'maxmemory'"
+    ]
+  },
+  {
+    "alert_id": "ALERT-003",
+    "title": "API gateway 502s",
+    "category": "gateway-autoscaling",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 22,
+    "message": "PagerDuty [SEV-2] API gateway returning 502s (38%) on prod-cluster-3 during peak traffic; gateway pods CPU throttled at 100%.",
+    "logs": [
+      "19:02:12Z api-gateway-1 WARN upstream connect error, HTTP 502 rate=38%",
+      "19:02:40Z hpa/api-gateway currentReplicas=4 desiredReplicas=10 maxReplicas=4 (capped)"
+    ]
+  },
+  {
+    "alert_id": "ALERT-004",
+    "title": "TLS handshake failures",
+    "category": "tls-cert-expiry",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 28,
+    "message": "PagerDuty [SEV-1] SSL handshake failures on payments-api; mobile checkout success rate down 61%.",
+    "logs": [
+      "21:40:03Z payments-api ERROR x509: certificate has expired or is not yet valid",
+      "21:40:05Z ingress-nginx WARN SSL_do_handshake() failed client=mobile-app"
+    ]
+  },
+  {
+    "alert_id": "ALERT-005",
+    "title": "Elasticsearch RED (never seen before)",
+    "category": "elasticsearch-shards",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 38,
+    "message": "PagerDuty [SEV-2] Elasticsearch cluster status RED; 14 unassigned shards after a rolling node restart; search latency above 8s.",
+    "logs": [
+      "05:12:09Z elasticsearch-master-0 WARN cluster health status changed from [YELLOW] to [RED]",
+      "05:12:11Z elasticsearch-data-2 INFO node rejoined; replicas unassigned, allocation setting=primaries"
+    ],
+    "human_resolution": {
+      "root_cause": "The rolling restart left cluster.routing.allocation.enable set to 'primaries', so replica shards were never re-allocated after the nodes rejoined.",
+      "resolution": "`curl -X PUT elasticsearch:9200/_cluster/settings -H 'Content-Type: application/json' -d '{\"persistent\":{\"cluster.routing.allocation.enable\":\"all\"}}'`",
+      "resolved_by": "Diego Alvarez"
+    }
+  },
+  {
+    "alert_id": "ALERT-006",
+    "title": "Kafka consumer lag",
+    "category": "kafka-consumer-lag",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 45,
+    "message": "PagerDuty [SEV-2] Consumer lag on the orders topic (group orders-consumer) at 1.9M and rising; consumers crash-looping.",
+    "logs": [
+      "16:11:20Z orders-consumer-1 ERROR InvalidProtocolBufferException: invalid tag",
+      "16:12:02Z kafka-exporter INFO consumergroup_lag{topic=orders}=1903117"
+    ]
+  },
+  {
+    "alert_id": "ALERT-007",
+    "title": "Redis memory spike (third time)",
+    "category": "redis-memory",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 40,
+    "message": "PagerDuty [SEV-1] Redis memory at 91% on prod-cluster-3 and rising. Third occurrence this month; OOM kills starting.",
+    "logs": [
+      "04:47:10Z redis-cache-0 WARN used_memory=3.64GB maxmemory=4GB eviction_policy=noeviction"
+    ]
+  },
+  {
+    "alert_id": "ALERT-008",
+    "title": "API gateway 502s (repeat)",
+    "category": "gateway-autoscaling",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 22,
+    "message": "PagerDuty [SEV-2] 502 Bad Gateway spike on prod-cluster-3; gateway CPU throttled and autoscaler not scaling out.",
+    "logs": [
+      "12:20:44Z api-gateway-2 WARN upstream connect error, HTTP 502 rate=33%",
+      "12:21:10Z hpa/api-gateway currentReplicas=4 maxReplicas=4 (capped)"
+    ]
+  },
+  {
+    "alert_id": "ALERT-009",
+    "title": "Elasticsearch RED (repeat)",
+    "category": "elasticsearch-shards",
+    "service": "prod-cluster-3",
+    "baseline_minutes": 38,
+    "message": "PagerDuty [SEV-2] Elasticsearch cluster RED again with unassigned replica shards after a node restart on prod-cluster-3.",
+    "logs": [
+      "07:30:41Z elasticsearch-master-0 WARN cluster health status changed from [YELLOW] to [RED]",
+      "07:30:44Z elasticsearch-data-1 INFO node rejoined; replicas unassigned"
+    ]
+  }
+]

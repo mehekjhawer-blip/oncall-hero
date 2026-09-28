@@ -1,0 +1,182 @@
+[
+  {
+    "incident_id": "INC-101",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-01-22T03:41:00Z",
+    "severity": "SEV-2",
+    "category": "gateway-autoscaling",
+    "symptom": "API gateway returning 502s (~41%) for 6 minutes during peak traffic; gateway pod CPU pegged at 100%.",
+    "root_cause": "HPA maxReplicas was still at the pre-launch default of 4, so gateway pods were CPU-throttled and dropped upstream connections.",
+    "resolution": "`kubectl scale deployment/api-gateway --replicas=12` to recover immediately, then `kubectl patch hpa api-gateway --type merge -p '{\"spec\":{\"maxReplicas\":20}}'` to raise the ceiling.",
+    "resolved_by": "Marcus Lee",
+    "resolver_left_company": true,
+    "resolution_time_minutes": 22,
+    "logs": [
+      "03:38:12Z api-gateway-2 WARN upstream connect error, HTTP 502 rate=41%",
+      "03:39:40Z hpa/api-gateway currentReplicas=4 desiredReplicas=11 maxReplicas=4 (capped)",
+      "03:40:05Z api-gateway-3 cpu=1.00/1.00 cfs_throttled_periods=98%"
+    ]
+  },
+  {
+    "incident_id": "INC-102",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-02-10T14:05:00Z",
+    "severity": "SEV-1",
+    "category": "db-connection-pool",
+    "symptom": "Checkout intermittently timing out at the payment step; error rate ~8%, no regional pattern.",
+    "root_cause": "A newly deployed retry loop never released DB connections on failure, exhausting the payments connection pool.",
+    "resolution": "`kubectl rollout undo deployment/checkout-service`, then patched the connection-release bug before redeploying.",
+    "resolved_by": "Priya Nair",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 35,
+    "logs": [
+      "14:03:51Z checkout-service ERROR HikariPool-1 - Connection is not available, request timed out after 30000ms",
+      "14:03:51Z checkout-service WARN pool stats total=50 active=50 idle=0 waiting=37",
+      "14:04:20Z payments-db INFO connections=198/200"
+    ]
+  },
+  {
+    "incident_id": "INC-103",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-02-27T22:12:00Z",
+    "severity": "SEV-1",
+    "category": "tls-cert-expiry",
+    "symptom": "Mobile checkout failing with SSL handshake errors; payments-api certificate had expired. Success rate down ~60%.",
+    "root_cause": "cert-manager renewal had been failing silently for 12 days after the ACME solver ingress class was renamed.",
+    "resolution": "`kubectl cert-manager renew payments-api-tls -n payments` to force reissue, then corrected the ingress class on the Issuer.",
+    "resolved_by": "Aisha Khan",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 28,
+    "logs": [
+      "22:09:03Z payments-api ERROR tls: failed to verify certificate: x509: certificate has expired",
+      "22:09:05Z ingress-nginx WARN SSL_do_handshake() failed (SSL: error:0A000086) client=mobile-app",
+      "22:10:40Z cert-manager ERROR Failed to determine ingress class for solver: class 'nginx-public' not found"
+    ]
+  },
+  {
+    "incident_id": "INC-104",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-03-14T02:14:00Z",
+    "severity": "SEV-1",
+    "category": "redis-memory",
+    "symptom": "Redis memory climbing until OOM kill, recurring every ~6 minutes; cache-dependent services degrade on each restart.",
+    "root_cause": "A config change removed the default TTL, so session cache keys were written without expiry and grew unbounded until Redis hit its memory limit.",
+    "resolution": "`kubectl rollout undo deployment/redis-cache` to restore the config with TTLs, then flushed the unbounded keys with `redis-cli --scan --pattern 'session:*' | xargs -L 1000 redis-cli del`.",
+    "resolved_by": "Sarah Chen",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 40,
+    "logs": [
+      "02:09:41Z redis-cache-0 WARN used_memory=3.81GB maxmemory=4GB eviction_policy=noeviction",
+      "02:11:02Z redis-cache-0 ERROR OOM command not allowed when used memory > 'maxmemory'",
+      "02:11:03Z kubelet Killing container redis-cache reason=OOMKilled exitCode=137"
+    ]
+  },
+  {
+    "incident_id": "INC-105",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-04-02T11:30:00Z",
+    "severity": "SEV-1",
+    "category": "disk-full",
+    "symptom": "Postgres primary went read-only with 'No space left on device'; writes failing across services.",
+    "root_cause": "WAL archiving to object storage stalled after an IAM key rotation, so pg_wal filled the 500GB data volume.",
+    "resolution": "`kubectl rollout restart deployment/wal-archiver` after updating the rotated credential secret; archiver drained the backlog and space recovered.",
+    "resolved_by": "Diego Alvarez",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 25,
+    "logs": [
+      "11:27:18Z postgres-0 PANIC could not write to file pg_wal/xlogtemp.88: No space left on device",
+      "11:24:02Z wal-archiver ERROR upload failed: AccessDenied (InvalidAccessKeyId)",
+      "11:28:00Z node-exporter WARN filesystem /var/lib/postgresql usage=100%"
+    ]
+  },
+  {
+    "incident_id": "INC-106",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-04-19T16:50:00Z",
+    "severity": "SEV-2",
+    "category": "kafka-consumer-lag",
+    "symptom": "Consumer lag on the orders topic grew past 2M messages; consumers crash-looping and rebalancing endlessly.",
+    "root_cause": "A poison-pill message with malformed protobuf crashed the consumer on every attempt, blocking its partition.",
+    "resolution": "`kubectl exec kafka-0 -- kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group orders-consumer --topic orders:3 --reset-offsets --shift-by 1 --execute` to skip the poison message, then added a dead-letter queue.",
+    "resolved_by": "Tom Becker",
+    "resolver_left_company": true,
+    "resolution_time_minutes": 45,
+    "logs": [
+      "16:44:09Z orders-consumer-2 ERROR InvalidProtocolBufferException: Protocol message contained an invalid tag",
+      "16:44:10Z orders-consumer-2 WARN Consumer group rebalance in progress (generation 4127)",
+      "16:47:31Z kafka-exporter INFO consumergroup_lag{topic=orders,partition=3}=1984221"
+    ]
+  },
+  {
+    "incident_id": "INC-107",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-05-08T09:20:00Z",
+    "severity": "SEV-2",
+    "category": "deploy-memory-leak",
+    "symptom": "search-service pods OOMKilled roughly every 20 minutes starting right after the morning deploy.",
+    "root_cause": "Release v2.14 introduced an unbounded in-memory result cache that grew until the container memory limit was hit.",
+    "resolution": "`kubectl rollout undo deployment/search-service` to restore v2.13; the cache bound was fixed in v2.15.",
+    "resolved_by": "Sarah Chen",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 30,
+    "logs": [
+      "09:14:55Z search-service-5 WARN heap usage 97% (1.94GB/2GB)",
+      "09:16:02Z kubelet Killing container search-service reason=OOMKilled exitCode=137",
+      "09:12:00Z argocd INFO Sync completed: search-service v2.14 (started 09:11)"
+    ]
+  },
+  {
+    "incident_id": "INC-108",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-06-03T13:05:00Z",
+    "severity": "SEV-2",
+    "category": "dns-coredns",
+    "symptom": "Intermittent 'no such host' errors between internal services; CoreDNS pods pinned at 100% CPU.",
+    "root_cause": "A chatty new service combined with the default ndots:5 setting multiplied DNS queries roughly 10x, overwhelming under-provisioned CoreDNS.",
+    "resolution": "`kubectl scale deployment/coredns -n kube-system --replicas=6`, then lowered ndots in the new service's pod spec.",
+    "resolved_by": "Aisha Khan",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 20,
+    "logs": [
+      "13:01:12Z billing-worker ERROR dial tcp: lookup ledger-svc.prod.svc.cluster.local: no such host",
+      "13:02:30Z coredns-7d9 WARN plugin/ready: timeout awaiting response, cpu=1.00/1.00",
+      "13:03:02Z coredns-metrics INFO coredns_dns_requests_total rate=48k/s (baseline 5k/s)"
+    ]
+  },
+  {
+    "incident_id": "INC-109",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-06-24T09:18:00Z",
+    "severity": "SEV-3",
+    "category": "cron-duplicates",
+    "symptom": "Background job queue backing up; jobs processing ~10x slower than normal with no errors in logs.",
+    "root_cause": "A typo in a cron expression made report-sync submit duplicate jobs every minute instead of every hour.",
+    "resolution": "`kubectl patch cronjob report-sync -p '{\"spec\":{\"suspend\":true}}'`, purged duplicate queue entries, then corrected the schedule to `0 * * * *`.",
+    "resolved_by": "Priya Nair",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 18,
+    "logs": [
+      "09:12:00Z job-queue INFO depth=48211 (baseline 900)",
+      "09:12:01Z report-sync INFO enqueued job report-sync-20260624-0912",
+      "09:13:00Z report-sync INFO enqueued job report-sync-20260624-0913"
+    ]
+  },
+  {
+    "incident_id": "INC-110",
+    "service": "prod-cluster-3",
+    "timestamp": "2026-07-15T18:40:00Z",
+    "severity": "SEV-3",
+    "category": "db-replica-lag",
+    "symptom": "Read replicas ~9 minutes behind the primary; dashboards and reports showing stale data.",
+    "root_cause": "A long-running analytics query held a snapshot that blocked WAL replay on the replica.",
+    "resolution": "Terminated the offending session with `psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='active' AND now()-query_start > interval '30 minutes'\"`, then moved analytics to a dedicated replica.",
+    "resolved_by": "Diego Alvarez",
+    "resolver_left_company": false,
+    "resolution_time_minutes": 33,
+    "logs": [
+      "18:33:10Z postgres-replica-1 LOG replay_lag=00:09:12",
+      "18:33:11Z postgres-replica-1 ERROR canceling statement due to conflict with recovery",
+      "18:35:47Z pg_stat_activity INFO pid=22841 state=active query_start=17:58:03 usename=analytics"
+    ]
+  }
+]
